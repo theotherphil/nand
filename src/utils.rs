@@ -21,7 +21,7 @@ pub fn join<S: AsRef<str>, I: Iterator<Item=S>>(iter: I, sep: &str) -> String {
     r
 }
 
-pub fn enumerate_bool_vecs(n: usize) -> Vec<Vec<bool>> {
+pub fn enumerate_bool_vecs(n: usize, max_count: usize) -> Vec<Vec<bool>> {
     assert!(n > 0 && n < 32);
     let mut ret = vec![];
 
@@ -33,6 +33,9 @@ pub fn enumerate_bool_vecs(n: usize) -> Vec<Vec<bool>> {
             }
         }
         ret.push(set.clone());
+        if ret.len() >= max_count {
+            break;
+        }
     }
 
     ret
@@ -41,16 +44,17 @@ pub fn enumerate_bool_vecs(n: usize) -> Vec<Vec<bool>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::usize;
 
     #[test]
     fn test_enumerate_bool_vecs() {
-        assert_eq!(enumerate_bool_vecs(1), vec![
+        assert_eq!(enumerate_bool_vecs(1, usize::MAX), vec![
             vec![false], vec![true]
         ]);
-        assert_eq!(enumerate_bool_vecs(2), vec![
+        assert_eq!(enumerate_bool_vecs(2, usize::MAX), vec![
             vec![false, false], vec![true, false], vec![false, true], vec![true, true]
         ]);
-        assert_eq!(enumerate_bool_vecs(3), vec![
+        assert_eq!(enumerate_bool_vecs(3, usize::MAX), vec![
             vec![false, false, false], vec![true, false, false],
             vec![false, true, false], vec![true, true, false],
             vec![false, false, true], vec![true, false, true],

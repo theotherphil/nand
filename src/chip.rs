@@ -7,7 +7,7 @@ use utils::*;
 pub const CHIPS: &'static [&'static str] =
     &["NOT", "OR", "AND", "XOR", "MUX", "DMUX",
       "NOT16", "OR16", "AND16", "MUX16", "OR8WAY",
-      "HALFADDER", "FULLADDER"];
+      "HALFADDER", "FULLADDER", "ADDER8"];
 
 pub fn create_chip(chip: &str) -> Composite {
     let mut factory = ChipFactory::new();
@@ -25,6 +25,7 @@ pub fn create_chip(chip: &str) -> Composite {
         "OR8WAY" => or8way(&mut factory),
         "HALFADDER" => halfadder(&mut factory),
         "FULLADDER" => fulladder(&mut factory),
+        "ADDER8" => adder8(&mut factory),
         _ => panic!("Unrecognised chip")
     }
 }
@@ -273,13 +274,13 @@ impl Chip for Composite {
 
 fn invalid_pin_read(chip_name: &str, pin_name: &str, available: Vec<&str>) -> ! {
     panic!(format!(
-        "Attempting to read invalid pin {} on chip {}. The available inputs pins are: {}",
+        "Attempting to read invalid pin {} on chip {}. The available output pins are: {}",
         pin_name, chip_name, join(available.iter(), ", ")));
 }
 
 fn invalid_pin_write(chip_name: &str, pin_name: &str, available: Vec<&str>) -> ! {
     panic!(format!(
-        "Attempting to write invalid pin {} on chip {}. The available output pins are: {}",
+        "Attempting to write invalid pin {} on chip {}. The available input pins are: {}",
         pin_name, chip_name, join(available.iter(), ", ")));
 }
 
@@ -498,6 +499,27 @@ pub fn fulladder(f: &mut ChipFactory) -> Composite {
         outputs!(sum <- half2;sum, carry <- or;out))
 }
 
+pub fn adder8(f: &mut ChipFactory) -> Composite {
+    let mut inputs = HashMap::new();
+    let mut outputs = HashMap::new();
+    let mut g = ChipGraph::new();
+
+    let half = gate!(g, halfadder(f));
+    input!(inputs, a[0] -> half;a, b[0] -> half;b);
+    output!(outputs, out[0] <- half;sum);
+
+    let mut prev = half;
+    for i in 0..7 {
+        let full = gate!(g, fulladder(f));
+        input!(inputs, a[i + 1] -> full;a, b[i + 1] -> full;b);
+        output!(outputs, out[i + 1] <- full;sum);
+        wire!(g, prev;carry -> full;c);
+        prev = full;
+    }
+
+    f.composite("ADDER8", g, inputs, outputs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,7 +534,13 @@ mod tests {
     {
         let num_inputs = input_names.len();
         let num_outputs = output_names.len();
-        let test_cases = enumerate_bool_vecs(num_inputs);
+        // TODO: better testing when the input space is large
+        // TODO: this will presumably involve doing random rather than exhaustive
+        // TODO: testing, but we first hit issues when enumerating the 2^16 inputs
+        // TODO: to adder8, which really shouldn't be a performance issue. remove
+        // TODO: the most gratuitious time sinks
+        let max_tests = 1000;
+        let test_cases = enumerate_bool_vecs(num_inputs, max_tests);
 
         if PRINT_TRUTH_TABLES {
             let columns = input_names.iter()
@@ -537,7 +565,8 @@ mod tests {
             for i in 0..num_outputs {
                 actual.push(chip.read_output(output_names[i]));
             }
-            assert_eq!(actual, expected);
+
+            assert_eq!(actual, expected, "input: {:?}", input);
 
             if PRINT_TRUTH_TABLES {
                 let row = input.iter()
@@ -663,5 +692,62 @@ mod tests {
         let mut c = fulladder(&mut f);
         assert_eq!("FULLADDER", c.name());
         test_against_reference(&mut c, vec!["a", "b", "c"], vec!["sum", "carry"], fulladder_ref);
+    }
+
+    // LSB first
+    fn to_i8(bits: &[bool]) -> i8 {
+        assert_eq!(bits.len(), 8);
+        let signed = bits.iter().rev().fold(0, |acc, &b| acc * 2 + (if b { 1 } else { 0 }));
+        signed as i8
+    }
+
+    #[test]
+    fn test_to_i8() {
+        assert_eq!(to_i8(&vec![false, false, false, false, false, false, false, false]), 0);
+        assert_eq!(to_i8(&vec![true, true, true, true, true, true, true, false]), 127);
+        assert_eq!(to_i8(&vec![true, true, true, true, true, true, true, true]), -1);
+        assert_eq!(to_i8(&vec![false, false, false, false, false, false, false, true]), -128);
+        assert_eq!(to_i8(&vec![true, false, true, false, false, false, false, false]), 5);
+    }
+
+    // LSB first
+    fn to_bool_vec(n: i8) -> Vec<bool> {
+        let mut vec = vec![false; 8];
+        let u = n as u8;
+        for i in 0..8 {
+            if u & (1 << i) > 0 {
+                vec[i] = true;
+            }
+        }
+        vec
+    }
+
+    #[test]
+    fn test_to_bool_vec() {
+        assert_eq!(to_bool_vec(0), vec![false, false, false, false, false, false, false, false]);
+        assert_eq!(to_bool_vec(127), vec![true, true, true, true, true, true, true, false]);
+        assert_eq!(to_bool_vec(-1), vec![true, true, true, true, true, true, true, true]);
+        assert_eq!(to_bool_vec(-128), vec![false, false, false, false, false, false, false, true]);
+        assert_eq!(to_bool_vec(5), vec![true, false, true, false, false, false, false, false]);
+    }
+
+    fn adder8_ref(inputs: &Vec<bool>) -> Vec<bool> {
+        assert_eq!(inputs.len(), 16);
+        let a = to_i8(&inputs[0..8]);
+        let b = to_i8(&inputs[8..16]);
+        let sum = a.wrapping_add(b);
+        to_bool_vec(sum as i8)
+    }
+
+    #[test]
+    fn run_adder8() {
+        let mut f = ChipFactory::new();
+        let mut c = adder8(&mut f);
+        assert_eq!("ADDER8", c.name());
+        test_against_reference(&mut c,
+            vec!["a_0", "a_1", "a_2", "a_3", "a_4", "a_5", "a_6", "a_7",
+                 "b_0", "b_1", "b_2", "b_3", "b_4", "b_5", "b_6", "b_7",],
+            vec!["out_0", "out_1", "out_2", "out_3", "out_4", "out_5", "out_6", "out_7"],
+            adder8_ref);
     }
 }
