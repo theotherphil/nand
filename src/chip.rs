@@ -6,7 +6,8 @@ use utils::*;
 
 pub const CHIPS: &'static [&'static str] =
     &["NOT", "OR", "AND", "XOR", "MUX", "DMUX",
-      "NOT16", "OR16", "AND16", "MUX16", "OR8WAY"];
+      "NOT16", "OR16", "AND16", "MUX16", "OR8WAY",
+      "HALFADDER"];
 
 pub fn create_chip(chip: &str) -> Composite {
     let mut factory = ChipFactory::new();
@@ -22,6 +23,7 @@ pub fn create_chip(chip: &str) -> Composite {
         "AND16" => and16(&mut factory),
         "MUX16" => mux16(&mut factory),
         "OR8WAY" => or8way(&mut factory),
+        "HALFADDER" => halfadder(&mut factory),
         _ => panic!("Unrecognised chip")
     }
 }
@@ -112,13 +114,13 @@ impl ChipFactory {
     }
 
     pub fn composite(&mut self,
-                 name: String,
+                 name: &str,
                  graph: ChipGraph,
                  inputs: HashMap<String, Vec<(NodeIndex, String)>>,
                  outputs: HashMap<String, (NodeIndex, String)>) -> Composite {
         let composite = Composite {
             id: self.chip_count,
-            name: name,
+            name: name.into(),
             graph: graph,
             inputs: inputs,
             outputs: outputs
@@ -309,7 +311,7 @@ pub fn not(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
     let nand = gate!(g, nand(f));
 
-    f.composite("NOT".into(), g,
+    f.composite("NOT", g,
         inputs!(in -> nand;a, in -> nand;b),
         outputs!(out <- nand;out))
 }
@@ -325,7 +327,7 @@ pub fn not16(f: &mut ChipFactory) -> Composite {
         output!(outputs, out[i] <- nand;out);
     }
 
-    f.composite("NOT16".into(), g, inputs, outputs)
+    f.composite("NOT16", g, inputs, outputs)
 }
 
 pub fn or(f: &mut ChipFactory) -> Composite {
@@ -336,7 +338,7 @@ pub fn or(f: &mut ChipFactory) -> Composite {
     let not2 = gate!(g, not(f));
     wire!(g, not1;out -> nand;a, not2;out -> nand;b);
 
-    f.composite("OR".into(), g,
+    f.composite("OR", g,
         inputs!(a -> not1;in, b -> not2;in),
         outputs!(out <- nand;out))
 }
@@ -354,7 +356,7 @@ pub fn or8way(f: &mut ChipFactory) -> Composite {
         ors[2];out -> ors[5];a, ors[3];out -> ors[5];b,
         ors[4];out -> ors[6];a, ors[5];out -> ors[6];b);
 
-    f.composite("OR8WAY".into(), g,
+    f.composite("OR8WAY", g,
         inputs!(in0 -> ors[0];a, in1 -> ors[0];b,
                 in2 -> ors[1];a, in3 -> ors[1];b,
                 in4 -> ors[2];a, in5 -> ors[2];b,
@@ -376,7 +378,7 @@ pub fn or16(f: &mut ChipFactory) -> Composite {
         output!(outputs, out[i] <- nand;out);
     }
 
-    f.composite("OR16".into(), g, inputs, outputs)
+    f.composite("OR16", g, inputs, outputs)
 }
 
 pub fn and(f: &mut ChipFactory) -> Composite {
@@ -386,7 +388,7 @@ pub fn and(f: &mut ChipFactory) -> Composite {
     let nand = gate!(g, nand(f));
     wire!(g, nand;out -> not;in);
 
-    f.composite("AND".into(), g,
+    f.composite("AND", g,
         inputs!(a -> nand;a, b -> nand;b),
         outputs!(out <- not;out))
 }
@@ -404,7 +406,7 @@ pub fn and16(f: &mut ChipFactory) -> Composite {
         output!(outputs, out[i] <- not;out);
     }
 
-    f.composite("AND16".into(), g, inputs, outputs)
+    f.composite("AND16", g, inputs, outputs)
 }
 
 pub fn mux(f: &mut ChipFactory) -> Composite {
@@ -416,7 +418,7 @@ pub fn mux(f: &mut ChipFactory) -> Composite {
     let or = gate!(g, or(f));
     wire!(g, not;out -> and2;b, and1;out -> or;b, and2;out -> or;a);
 
-    f.composite("MUX".into(), g,
+    f.composite("MUX", g,
         inputs!(sel -> not;in, sel -> and1;a, a -> and2;a, b -> and1;b),
         outputs!(out <- or;out))
 }
@@ -441,7 +443,7 @@ pub fn mux16(f: &mut ChipFactory) -> Composite {
         output!(outputs, out[i] <- or;out);
     }
 
-    f.composite("MUX16".into(), g, inputs, outputs)
+    f.composite("MUX16", g, inputs, outputs)
 }
 
 pub fn xor(f: &mut ChipFactory) -> Composite {
@@ -452,7 +454,7 @@ pub fn xor(f: &mut ChipFactory) -> Composite {
     let or = gate!(g, or(f));
     wire!(g, or;out -> and;a, nand;out -> and;b);
 
-    f.composite("MUX".into(), g,
+    f.composite("XOR", g,
         inputs!(a -> or;a, a -> nand;a, b -> or;b, b -> nand;b),
         outputs!(out <- and;out))
 }
@@ -465,9 +467,20 @@ pub fn dmux(f: &mut ChipFactory) -> Composite {
     let and2 = gate!(g, and(f));
     wire!(g, not;out -> and1;b);
 
-    f.composite("DMUX".into(), g,
+    f.composite("DMUX", g,
         inputs!(sel -> not;in, sel -> and2;b, in -> and1;a, in -> and2; a),
         outputs!(a <- and1;out, b <- and2;out))
+}
+
+pub fn halfadder(f: &mut ChipFactory) -> Composite {
+    let mut g = ChipGraph::new();
+
+    let xor = gate!(g, xor(f));
+    let and = gate!(g, and(f));
+
+    f.composite("HALFADDER", g,
+        inputs!(a -> xor;a, b -> xor;b, a -> and;a, b -> and;b),
+        outputs!(sum <- xor;out, carry <- and;out))
 }
 
 #[cfg(test)]
@@ -548,6 +561,19 @@ mod tests {
         test_against_reference(&mut c, vec!["a", "b"], vec!["out"], or_ref);
     }
 
+    fn xor_ref(inputs: &Vec<bool>) -> Vec<bool> {
+        assert_eq!(inputs.len(), 2);
+        vec![(inputs[0] || inputs[1]) && !(inputs[0] && inputs[1])]
+    }
+
+    #[test]
+    fn run_xor() {
+        let mut f = ChipFactory::new();
+        let mut c = xor(&mut f);
+        assert_eq!("XOR", c.name());
+        test_against_reference(&mut c, vec!["a", "b"], vec!["out"], xor_ref);
+    }
+
     fn or8way_ref(inputs: &Vec<bool>) -> Vec<bool> {
         assert_eq!(inputs.len(), 8);
         vec![inputs.iter().any(|x| *x)]
@@ -591,5 +617,20 @@ mod tests {
         let mut c = mux(&mut f);
         assert_eq!("MUX", c.name());
         test_against_reference(&mut c, vec!["sel", "a", "b"], vec!["out"], mux_ref);
+    }
+
+    fn halfadder_ref(inputs: &Vec<bool>) -> Vec<bool> {
+        assert_eq!(inputs.len(), 2);
+        let sum = xor_ref(inputs)[0];
+        let carry = and_ref(inputs)[0];
+        vec![sum, carry]
+    }
+
+    #[test]
+    fn run_halfadder() {
+        let mut f = ChipFactory::new();
+        let mut c = halfadder(&mut f);
+        assert_eq!("HALFADDER", c.name());
+        test_against_reference(&mut c, vec!["a", "b"], vec!["sum", "carry"], halfadder_ref);
     }
 }
