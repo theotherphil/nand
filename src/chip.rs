@@ -7,7 +7,7 @@ use utils::*;
 pub const CHIPS: &'static [&'static str] =
     &["NOT", "OR", "AND", "XOR", "MUX", "DMUX",
       "NOT16", "OR16", "AND16", "MUX16", "OR8WAY",
-      "HALFADDER"];
+      "HALFADDER", "FULLADDER"];
 
 pub fn create_chip(chip: &str) -> Composite {
     let mut factory = ChipFactory::new();
@@ -24,6 +24,7 @@ pub fn create_chip(chip: &str) -> Composite {
         "MUX16" => mux16(&mut factory),
         "OR8WAY" => or8way(&mut factory),
         "HALFADDER" => halfadder(&mut factory),
+        "FULLADDER" => fulladder(&mut factory),
         _ => panic!("Unrecognised chip")
     }
 }
@@ -483,6 +484,20 @@ pub fn halfadder(f: &mut ChipFactory) -> Composite {
         outputs!(sum <- xor;out, carry <- and;out))
 }
 
+pub fn fulladder(f: &mut ChipFactory) -> Composite {
+    let mut g = ChipGraph::new();
+
+    let half1 = gate!(g, halfadder(f));
+    let half2 = gate!(g, halfadder(f));
+    let or = gate!(g, or(f));
+
+    wire!(g, half1;carry -> or;a, half1;sum -> half2;a, half2;carry -> or;b);
+
+    f.composite("FULLADDER", g,
+        inputs!(a -> half1;a, b -> half1;b, c -> half2;b),
+        outputs!(sum <- half2;sum, carry <- or;out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,5 +647,21 @@ mod tests {
         let mut c = halfadder(&mut f);
         assert_eq!("HALFADDER", c.name());
         test_against_reference(&mut c, vec!["a", "b"], vec!["sum", "carry"], halfadder_ref);
+    }
+
+    fn fulladder_ref(inputs: &Vec<bool>) -> Vec<bool> {
+        assert_eq!(inputs.len(), 3);
+        let total = inputs.iter().filter(|x| **x).count();
+        let sum = total & 1 > 0;
+        let carry = total & 2 > 0;
+        vec![sum, carry]
+    }
+
+    #[test]
+    fn run_fulladder() {
+        let mut f = ChipFactory::new();
+        let mut c = fulladder(&mut f);
+        assert_eq!("FULLADDER", c.name());
+        test_against_reference(&mut c, vec!["a", "b", "c"], vec!["sum", "carry"], fulladder_ref);
     }
 }

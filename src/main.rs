@@ -57,7 +57,9 @@ fn main() {
 
 fn run() -> io::Result<()> {
     let chips_dir = std::env::current_dir()?.join("chips");
-    fs::create_dir(&chips_dir)?;
+    if !chips_dir.exists() {
+        fs::create_dir(&chips_dir)?;
+    }
     generate_dot_files(&chips_dir)?;
     generate_svg_files(&chips_dir)?;
     write_chips_page(&chips_dir)?;
