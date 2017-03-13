@@ -248,8 +248,8 @@ impl Chip for Composite {
         if !self.inputs.contains_key(&pin.to_string()) {
             invalid_pin_write(&self.name, pin, self.inputs.keys().map(|a| &**a).collect::<Vec<_>>())
         }
-        let node_pins = self.inputs[&pin.to_string()].clone();
-        for (node, inner_pin) in node_pins.into_iter() {
+        let ref node_pins = self.inputs[&pin.to_string()];
+        for &(node, ref inner_pin) in node_pins.into_iter() {
             let mut chip = self.graph.node_weight_mut(node).unwrap();
             chip.set_input(&inner_pin, state);
         }
@@ -259,7 +259,7 @@ impl Chip for Composite {
         if !self.outputs.contains_key(&pin.to_string()) {
             invalid_pin_read(&self.name, pin, self.outputs.keys().map(|a| &**a).collect::<Vec<_>>())
         }
-        let (node, inner_pin) = self.outputs[&pin.to_string()].clone();
+        let (node, ref inner_pin) = self.outputs[&pin.to_string()];
         let chip = self.graph.node_weight(node).unwrap();
         let out = chip.read_output(&inner_pin);
         log_output_read(&self.name(), pin, out);
