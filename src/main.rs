@@ -1,4 +1,5 @@
 
+extern crate fnv;
 extern crate petgraph;
 
 #[macro_use]

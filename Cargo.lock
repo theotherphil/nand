@@ -2,12 +2,18 @@
 name = "nand"
 version = "0.1.0"
 dependencies = [
+ "fnv 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "petgraph 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "fixedbitset"
 version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "fnv"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -26,5 +32,6 @@ dependencies = [
 
 [metadata]
 "checksum fixedbitset 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "88c3c33fc4c00db33f5174eb98aea809c4c007db0b71351d810a7e094ea3b64d"
+"checksum fnv 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "6cc484842f1e2884faf56f529f960cc12ad8c71ce96cc7abba0a067c98fee344"
 "checksum ordermap 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)" = "fdaf30b4edcc481e006518450305ada0149955758851ac87b78128bfbfdf310b"
 "checksum petgraph 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)" = "284bb4b0b61d2b0aba0202aad4d9625a5a2e7f9840dc4353709cbcfe9ae57bbd"

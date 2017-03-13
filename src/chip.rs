@@ -1,8 +1,12 @@
 
+use fnv::FnvHasher;
 use petgraph::prelude::*;
 use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 use graph_algorithms::*;
 use utils::*;
+
+type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 pub const CHIPS: &'static [&'static str] =
     &["NOT", "OR", "AND", "XOR", "MUX", "DMUX",
@@ -45,7 +49,7 @@ macro_rules! gate {
 
 macro_rules! inputs {
     ($( $input:tt -> $n:expr;$p:tt ),*) => {{
-        let mut map = ::std::collections::HashMap::new();
+        let mut map = HashMapFnv::default();
         $( map.entry(stringify!($input).into())
               .or_insert(Vec::<(NodeIndex, String)>::new())
               .push(($n, stringify!($p).into())); )*
@@ -63,7 +67,7 @@ macro_rules! input {
 
 macro_rules! outputs {
     ($( $output:tt <- $n:expr;$p:tt ),*) => {{
-        let mut map = ::std::collections::HashMap::new();
+        let mut map = HashMapFnv::default();
         $( map.insert(stringify!($output).into(), ($n, stringify!($p).into())); )*
         map
     }}
@@ -118,8 +122,8 @@ impl ChipFactory {
     pub fn composite(&mut self,
                  name: &str,
                  graph: ChipGraph,
-                 inputs: HashMap<String, Vec<(NodeIndex, String)>>,
-                 outputs: HashMap<String, (NodeIndex, String)>) -> Composite {
+                 inputs: HashMapFnv<String, Vec<(NodeIndex, String)>>,
+                 outputs: HashMapFnv<String, (NodeIndex, String)>) -> Composite {
         let sorted_nodes = topological_sort(&graph);
         let composite = Composite {
             id: self.chip_count,
@@ -167,8 +171,8 @@ pub struct Composite {
     pub id: u32,
     pub name: String,
     pub graph: ChipGraph,
-    pub inputs: HashMap<String, Vec<(NodeIndex, String)>>,
-    pub outputs: HashMap<String, (NodeIndex, String)>,
+    pub inputs: HashMapFnv<String, Vec<(NodeIndex, String)>>,
+    pub outputs: HashMapFnv<String, (NodeIndex, String)>,
 
     sorted_nodes: Vec<NodeIndex>,
 }
@@ -320,8 +324,8 @@ pub fn not(f: &mut ChipFactory) -> Composite {
 }
 
 pub fn not16(f: &mut ChipFactory) -> Composite {
-    let mut inputs = HashMap::new();
-    let mut outputs = HashMap::new();
+    let mut inputs = HashMapFnv::default();
+    let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
@@ -368,8 +372,8 @@ pub fn or8way(f: &mut ChipFactory) -> Composite {
 }
 
 pub fn or16(f: &mut ChipFactory) -> Composite {
-    let mut inputs = HashMap::new();
-    let mut outputs = HashMap::new();
+    let mut inputs = HashMapFnv::default();
+    let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
@@ -397,8 +401,8 @@ pub fn and(f: &mut ChipFactory) -> Composite {
 }
 
 pub fn and16(f: &mut ChipFactory) -> Composite {
-    let mut inputs = HashMap::new();
-    let mut outputs = HashMap::new();
+    let mut inputs = HashMapFnv::default();
+    let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
@@ -432,8 +436,8 @@ pub fn mux(f: &mut ChipFactory) -> Composite {
 // TODO: DMUX8WAY (3 sel bits)
 
 pub fn mux16(f: &mut ChipFactory) -> Composite {
-    let mut inputs = HashMap::new();
-    let mut outputs = HashMap::new();
+    let mut inputs = HashMapFnv::default();
+    let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
@@ -501,8 +505,8 @@ pub fn fulladder(f: &mut ChipFactory) -> Composite {
 }
 
 pub fn adder8(f: &mut ChipFactory) -> Composite {
-    let mut inputs = HashMap::new();
-    let mut outputs = HashMap::new();
+    let mut inputs = HashMapFnv::default();
+    let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     let half = gate!(g, halfadder(f));
