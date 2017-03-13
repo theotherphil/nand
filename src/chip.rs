@@ -120,12 +120,14 @@ impl ChipFactory {
                  graph: ChipGraph,
                  inputs: HashMap<String, Vec<(NodeIndex, String)>>,
                  outputs: HashMap<String, (NodeIndex, String)>) -> Composite {
+        let sorted_nodes = topological_sort(&graph);
         let composite = Composite {
             id: self.chip_count,
             name: name.into(),
             graph: graph,
             inputs: inputs,
-            outputs: outputs
+            outputs: outputs,
+            sorted_nodes: sorted_nodes
         };
         self.chip_count += 1;
         composite
@@ -167,6 +169,8 @@ pub struct Composite {
     pub graph: ChipGraph,
     pub inputs: HashMap<String, Vec<(NodeIndex, String)>>,
     pub outputs: HashMap<String, (NodeIndex, String)>,
+
+    sorted_nodes: Vec<NodeIndex>,
 }
 
 impl Chip for Nand {
@@ -222,19 +226,18 @@ impl Chip for Composite {
     // Assumes that inputs have already been set.
     fn run(&mut self) {
         log_running(&self.name());
-        let nodes = topological_sort(&self.graph);
-        for u in nodes {
-            self.graph.node_weight_mut(u).unwrap().run();
+        for u in &self.sorted_nodes {
+            self.graph.node_weight_mut(*u).unwrap().run();
 
             // It appears that I can't just iterate over edges here, due to lifetime
             // issues when mutating the graph.
             let neighbours: Vec<NodeIndex>
-                = self.graph.neighbors_directed(u, Direction::Outgoing).collect();
+                = self.graph.neighbors_directed(*u, Direction::Outgoing).collect();
 
             for v in neighbours {
-                let e = self.graph.find_edge(u, v).unwrap();
+                let e = self.graph.find_edge(*u, v).unwrap();
                 let wire = self.graph.edge_weight(e).unwrap().clone();
-                let state = self.graph.node_weight(u).unwrap().read_output(&wire.from_port);
+                let state = self.graph.node_weight(*u).unwrap().read_output(&wire.from_port);
                 self.graph.node_weight_mut(v).unwrap().set_input(&wire.to_port, state);
             }
         }
@@ -538,7 +541,7 @@ mod tests {
         // TODO: this will presumably involve doing random rather than exhaustive
         // TODO: testing, but we first hit issues when enumerating the 2^16 inputs
         // TODO: to adder8, which really shouldn't be a performance issue. remove
-        // TODO: the most gratuitious time sinks
+        // TODO: the most gratuitous time sinks
         let max_tests = 1000;
         let test_cases = enumerate_bool_vecs(num_inputs, max_tests);
 
