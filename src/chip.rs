@@ -229,13 +229,11 @@ impl Chip for Composite {
         for u in &self.sorted_nodes {
             self.graph.node_weight_mut(*u).unwrap().run();
 
-            // It appears that I can't just iterate over edges here, due to lifetime
-            // issues when mutating the graph.
-            let neighbours: Vec<NodeIndex>
-                = self.graph.neighbors_directed(*u, Direction::Outgoing).collect();
+            let mut neighbours = self.graph
+                .neighbors_directed(*u, Direction::Outgoing)
+                .detach();
 
-            for v in neighbours {
-                let e = self.graph.find_edge(*u, v).unwrap();
+            while let Some((e, v)) = neighbours.next(&self.graph) {
                 let wire = self.graph.edge_weight(e).unwrap().clone();
                 let state = self.graph.node_weight(*u).unwrap().read_output(&wire.from_port);
                 self.graph.node_weight_mut(v).unwrap().set_input(&wire.to_port, state);
