@@ -1,14 +1,9 @@
 
-use fnv::FnvHasher;
 use petgraph::prelude::*;
-use std::collections::HashMap;
 use std::fmt;
-use std::hash::BuildHasherDefault;
 use std::slice::Iter;
 use graph_algorithms::*;
 use utils::*;
-
-type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
 macro_rules! chip_kinds {
     ($( $variant:tt ),*) => {
@@ -123,11 +118,52 @@ pub trait Chip {
 }
 
 /// Nand gates are always treated as primitive.
+/// We could use instances of Primitive to represent them, but
+/// that would make emulation even slower.
 pub struct Nand {
     id: u32,
     a: bool,
     b: bool,
     out: bool
+}
+
+pub struct Primitive {
+    pub id: u32,
+    pub name: String,
+    pub inputs: HashMapFnv<String, bool>,
+    pub outputs: HashMapFnv<String, bool>,
+    pub runner: Box<FnMut(&HashMapFnv<String, bool>, &mut HashMapFnv<String, bool>)>
+}
+
+impl Chip for Primitive {
+    fn id(&self) -> u32 {
+        self.id
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    // Assumes that inputs have already been set.
+    fn run(&mut self) {
+        (self.runner)(&self.inputs, &mut self.outputs);
+    }
+
+    fn set_input(&mut self, pin: &str, state: bool) {
+        *self.inputs.get_mut(pin).unwrap() = state;
+    }
+
+    fn read_output(&self, pin: &str) -> bool {
+        *self.outputs.get(pin).unwrap()
+    }
+
+    fn input_pins(&self) -> Vec<String> {
+        self.inputs.keys().map(|x| x.clone()).collect()
+    }
+
+    fn output_pins(&self) -> Vec<String> {
+        self.outputs.keys().map(|x| x.clone()).collect()
+    }
 }
 
 // Dummy composite chip, so that we can render something for each chip kind.
@@ -159,7 +195,8 @@ impl ChipFactory {
                  name: &str,
                  graph: ChipGraph,
                  inputs: HashMapFnv<String, Vec<(NodeIndex, String)>>,
-                 outputs: HashMapFnv<String, (NodeIndex, String)>) -> Composite {
+                 outputs: HashMapFnv<String, (NodeIndex, String)>
+        ) -> Composite {
         let sorted_nodes = topological_sort(&graph);
         let composite = Composite {
             id: self.chip_count,
@@ -171,6 +208,22 @@ impl ChipFactory {
         };
         self.chip_count += 1;
         composite
+    }
+
+    pub fn primitive(&mut self, name: &str,
+        inputs: HashMapFnv<String, bool>,
+        outputs: HashMapFnv<String, bool>,
+        runner: Box<FnMut(&HashMapFnv<String, bool>, &mut HashMapFnv<String, bool>)>
+        ) -> Primitive {
+        let primitive = Primitive {
+            id: self.chip_count,
+            name: name.into(),
+            inputs: inputs,
+            outputs: outputs,
+            runner: runner
+        };
+        self.chip_count += 1;
+        primitive
     }
 }
 
@@ -357,6 +410,16 @@ pub fn not(f: &mut ChipFactory) -> Composite {
     f.composite("NOT", g,
         inputs!(in -> nand;a, in -> nand;b),
         outputs!(out <- nand;out))
+}
+
+pub fn not_primitive(f: &mut ChipFactory) -> Primitive {
+    f.primitive("NOT",
+        hashmap!["in".into() => false],
+        hashmap!["out".into() => false],
+        Box::new(|i, o| {
+            o.insert("out".into(), !i["in"]);
+        })
+    )
 }
 
 pub fn not16(f: &mut ChipFactory) -> Composite {
@@ -619,6 +682,73 @@ mod tests {
         }
     }
 
+    fn test_against_primitive(composite: &mut Composite,
+                              primitive: &mut Primitive,
+                              input_names: Vec<&str>,
+                              output_names: Vec<&str>)
+    {
+        // TODO: check compositive and primitive have the same inputs and outputs
+
+        let num_inputs = input_names.len();
+        let num_outputs = output_names.len();
+        // TODO: better testing when the input space is large
+        // TODO: this will presumably involve doing random rather than exhaustive
+        // TODO: testing, but we first hit issues when enumerating the 2^16 inputs
+        // TODO: to adder8, which really shouldn't be a performance issue. remove
+        // TODO: the most gratuitous time sinks
+        let max_tests = 1000;
+        let test_cases = enumerate_bool_vecs(num_inputs, max_tests);
+
+        if PRINT_TRUTH_TABLES {
+            let columns = input_names.iter()
+                .chain(output_names.iter())
+                .map(|n| format!("{name:>width$}", name=n, width=3));
+
+            let header = join(columns, "|");
+            println!("{}", header);
+            for _ in 0..header.len() {
+                print!("-");
+            }
+            println!();
+        }
+
+        for input in &test_cases {
+            for i in 0..num_inputs {
+                composite.set_input(input_names[i], input[i]);
+                primitive.set_input(input_names[i], input[i]);
+            }
+
+            composite.run();
+            primitive.run();
+
+            let mut composite_result = vec![];
+            let mut primitive_result = vec![];
+
+            for i in 0..num_outputs {
+                composite_result.push(composite.read_output(output_names[i]));
+                primitive_result.push(primitive.read_output(output_names[i]));
+            }
+
+            assert_eq!(composite_result, primitive_result, "input: {:?}", input);
+
+            if PRINT_TRUTH_TABLES {
+                let composite_rows = input.iter()
+                    .chain(composite_result.iter())
+                    .map(|b| format!("{val:>width$}", val=if *b { "T" } else { "F" }, width=3));
+
+                println!("Composite");
+                println!("{}", join(composite_rows, "|"));
+
+                let primitive_rows = input.iter()
+                    .chain(primitive_result.iter())
+                    .map(|b| format!("{val:>width$}", val=if *b { "T" } else { "F" }, width=3));
+
+                println!("Primitive");
+                println!("{}", join(primitive_rows, "|"));
+            }
+        }
+    }
+
     fn not_ref(inputs: &Vec<bool>) -> Vec<bool> {
         assert_eq!(inputs.len(), 1);
         vec![!inputs[0]]
@@ -630,6 +760,8 @@ mod tests {
         let mut c = not(&mut f);
         assert_eq!("NOT", c.name());
         test_against_reference(&mut c, vec!["in"], vec!["out"], not_ref);
+        let mut p = not_primitive(&mut f);
+        test_against_primitive(&mut c, &mut p, vec!["in"], vec!["out"]);
     }
 
     fn or_ref(inputs: &Vec<bool>) -> Vec<bool> {

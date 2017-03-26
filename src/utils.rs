@@ -1,9 +1,15 @@
 
+use std::hash::BuildHasherDefault;
+
+use fnv::FnvHasher;
+use std::collections::HashMap;
+pub type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
+
 macro_rules! hashmap {
     ($( $key: expr => $val: expr ),*) => {{
-         let mut map = ::std::collections::HashMap::new();
-         $( map.insert($key, $val); )*
-         map
+        let mut map = HashMapFnv::default();
+        $( map.insert($key, $val); )*
+        map
     }}
 }
 
