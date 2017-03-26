@@ -2,35 +2,61 @@
 use fnv::FnvHasher;
 use petgraph::prelude::*;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::BuildHasherDefault;
+use std::slice::Iter;
 use graph_algorithms::*;
 use utils::*;
 
 type HashMapFnv<K, V> = HashMap<K, V, BuildHasherDefault<FnvHasher>>;
 
-pub const CHIPS: &'static [&'static str] =
-    &["NOT", "OR", "AND", "XOR", "MUX", "DMUX",
-      "NOT16", "OR16", "AND16", "MUX16", "OR8WAY",
-      "HALFADDER", "FULLADDER", "ADDER8"];
+macro_rules! chip_kinds {
+    ($( $variant:tt ),*) => {
+        #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
+        pub enum ChipKind {
+            $($variant,)*
+        }
 
-pub fn create_chip(chip: &str) -> Composite {
+        impl ChipKind {
+            pub fn iter() -> Iter<'static, ChipKind> {
+                use ChipKind::*;
+                static CHIP_KINDS: &'static [ChipKind] = &[
+                    $($variant,)*
+                ];
+                CHIP_KINDS.into_iter()
+            }
+        }
+    }
+}
+
+chip_kinds!(
+    Nand, Not, Or, And, Xor, Mux, DMux, Not16, Or16, And16, Mux16,
+    Or8Way, HalfAdder, FullAdder, Adder8);
+
+impl fmt::Display for ChipKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+pub fn create_chip(chip: ChipKind) -> Composite {
     let mut factory = ChipFactory::new();
     match chip {
-        "NOT" => not(&mut factory),
-        "OR" => or(&mut factory),
-        "AND" => and(&mut factory),
-        "XOR" => xor(&mut factory),
-        "MUX" => mux(&mut factory),
-        "DMUX" => dmux(&mut factory),
-        "NOT16" => not16(&mut factory),
-        "OR16" => or16(&mut factory),
-        "AND16" => and16(&mut factory),
-        "MUX16" => mux16(&mut factory),
-        "OR8WAY" => or8way(&mut factory),
-        "HALFADDER" => halfadder(&mut factory),
-        "FULLADDER" => fulladder(&mut factory),
-        "ADDER8" => adder8(&mut factory),
-        _ => panic!("Unrecognised chip")
+        ChipKind::Nand      => nand_composite(&mut factory),
+        ChipKind::Not       => not(&mut factory),
+        ChipKind::Or        => or(&mut factory),
+        ChipKind::And       => and(&mut factory),
+        ChipKind::Xor       => xor(&mut factory),
+        ChipKind::Mux       => mux(&mut factory),
+        ChipKind::DMux      => dmux(&mut factory),
+        ChipKind::Not16     => not16(&mut factory),
+        ChipKind::Or16      => or16(&mut factory),
+        ChipKind::And16     => and16(&mut factory),
+        ChipKind::Mux16     => mux16(&mut factory),
+        ChipKind::Or8Way    => or8way(&mut factory),
+        ChipKind::HalfAdder => halfadder(&mut factory),
+        ChipKind::FullAdder => fulladder(&mut factory),
+        ChipKind::Adder8    => adder8(&mut factory)
     }
 }
 
@@ -102,6 +128,16 @@ pub struct Nand {
     a: bool,
     b: bool,
     out: bool
+}
+
+// Dummy composite chip, so that we can render something for each chip kind.
+pub fn nand_composite(f: &mut ChipFactory) -> Composite {
+    let mut g = ChipGraph::new();
+    let nand = gate!(g, nand(f));
+
+    f.composite("NAND", g,
+        inputs!(a -> nand;a, b -> nand;b),
+        outputs!(out <- nand;out))
 }
 
 pub struct ChipFactory {
@@ -582,7 +618,6 @@ mod tests {
             }
         }
     }
-
 
     fn not_ref(inputs: &Vec<bool>) -> Vec<bool> {
         assert_eq!(inputs.len(), 1);

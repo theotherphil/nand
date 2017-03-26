@@ -18,18 +18,19 @@ use dot::*;
 use chip::*;
 
 fn generate_dot_files<P: AsRef<Path>>(dir: P) -> io::Result<()> {
-    for chip in CHIPS {
+    for chip in ChipKind::iter() {
         let g = create_chip(*chip);
         let dot_path = dir.as_ref().join(chip.to_string() + ".dot");
         let mut f = File::create(&dot_path)?;
-        let mut renderer = GraphRenderer::new(*chip, &mut f);
+        let name = chip.to_string();
+        let mut renderer = GraphRenderer::new(&name, &mut f);
         g.render(&mut renderer);
     }
     Ok(())
 }
 
 fn generate_svg_files<P: AsRef<Path>>(dir: P) -> io::Result<()> {
-    for chip in CHIPS {
+    for chip in ChipKind::iter() {
         let dot_path = dir.as_ref().join(chip.to_string() + ".dot");
         run_dot(&dot_path);
     }
@@ -42,7 +43,7 @@ fn write_chips_page<P: AsRef<Path>>(dir: P) -> io::Result<()> {
 
     f.write("<html>".as_bytes()).unwrap();
     f.write("<body>".as_bytes()).unwrap();
-    for chip in CHIPS {
+    for chip in ChipKind::iter() {
         let chip_path = dir.as_ref().join(format!("{}.dot.svg", chip));
         write!(&mut f, "<p><img src={:?}></img></p>", chip_path).unwrap();
     }
