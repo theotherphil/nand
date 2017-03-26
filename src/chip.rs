@@ -440,8 +440,8 @@ pub fn or(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
     let nand = gate!(g, nand(f));
-    let not1 = gate!(g, not(f));
-    let not2 = gate!(g, not(f));
+    let not1 = gate!(g, not_primitive(f));
+    let not2 = gate!(g, not_primitive(f));
     wire!(g, not1;out -> nand;a, not2;out -> nand;b);
 
     f.composite("OR", g,
@@ -449,12 +449,22 @@ pub fn or(f: &mut ChipFactory) -> Composite {
         outputs!(out <- nand;out))
 }
 
+pub fn or_primitive(f: &mut ChipFactory) -> Primitive {
+    f.primitive("OR",
+        hashmap!["a".into() => false, "b".into() => false],
+        hashmap!["out".into() => false],
+        Box::new(|i, o| {
+            o.insert("out".into(), i["a"] || i["b"]);
+        })
+    )
+}
+
 pub fn or8way(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
     let mut ors = vec![];
     for _ in 0..7 {
-        ors.push(gate!(g, or(f)));
+        ors.push(gate!(g, or_primitive(f)));
     }
 
     wire!(g,
@@ -476,8 +486,8 @@ pub fn or16(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
-        let not1 = gate!(g, not(f));
-        let not2 = gate!(g, not(f));
+        let not1 = gate!(g, not_primitive(f));
+        let not2 = gate!(g, not_primitive(f));
         let nand = gate!(g, nand(f));
         wire!(g, not1;out -> nand;a, not2;out -> nand;b);
         input!(inputs, a[i] -> not1;in, b[i] -> not2;in);
@@ -490,7 +500,7 @@ pub fn or16(f: &mut ChipFactory) -> Composite {
 pub fn and(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
-    let not = gate!(g, not(f));
+    let not = gate!(g, not_primitive(f));
     let nand = gate!(g, nand(f));
     wire!(g, nand;out -> not;in);
 
@@ -499,13 +509,23 @@ pub fn and(f: &mut ChipFactory) -> Composite {
         outputs!(out <- not;out))
 }
 
+pub fn and_primitive(f: &mut ChipFactory) -> Primitive {
+    f.primitive("AND",
+        hashmap!["a".into() => false, "b".into() => false],
+        hashmap!["out".into() => false],
+        Box::new(|i, o| {
+            o.insert("out".into(), i["a"] && i["b"]);
+        })
+    )
+}
+
 pub fn and16(f: &mut ChipFactory) -> Composite {
     let mut inputs = HashMapFnv::default();
     let mut outputs = HashMapFnv::default();
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
-        let not = gate!(g, not(f));
+        let not = gate!(g, not_primitive(f));
         let nand = gate!(g, nand(f));
         wire!(g, nand;out -> not;in);
         input!(inputs, a[i] -> nand;a, b[i] -> nand;b);
@@ -518,10 +538,10 @@ pub fn and16(f: &mut ChipFactory) -> Composite {
 pub fn mux(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
-    let not = gate!(g, not(f));
-    let and1 = gate!(g, and(f));
-    let and2 = gate!(g, and(f));
-    let or = gate!(g, or(f));
+    let not = gate!(g, not_primitive(f));
+    let and1 = gate!(g, and_primitive(f));
+    let and2 = gate!(g, and_primitive(f));
+    let or = gate!(g, or_primitive(f));
     wire!(g, not;out -> and2;b, and1;out -> or;b, and2;out -> or;a);
 
     f.composite("MUX", g,
@@ -540,10 +560,10 @@ pub fn mux16(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
     for i in 0..16 {
-        let not = gate!(g, not(f));
-        let and1 = gate!(g, and(f));
-        let and2 = gate!(g, and(f));
-        let or = gate!(g, or(f));
+        let not = gate!(g, not_primitive(f));
+        let and1 = gate!(g, and_primitive(f));
+        let and2 = gate!(g, and_primitive(f));
+        let or = gate!(g, or_primitive(f));
         wire!(g, not;out -> and2;b, and1;out -> or;b, and2;out -> or;a);
         input!(inputs, sel[i] -> not;in, sel[i] -> and1;a, a[i] -> and2;a, b[i] -> and1;b);
         output!(outputs, out[i] <- or;out);
@@ -556,8 +576,8 @@ pub fn xor(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
     let nand = gate!(g, nand(f));
-    let and = gate!(g, and(f));
-    let or = gate!(g, or(f));
+    let and = gate!(g, and_primitive(f));
+    let or = gate!(g, or_primitive(f));
     wire!(g, or;out -> and;a, nand;out -> and;b);
 
     f.composite("XOR", g,
@@ -565,12 +585,22 @@ pub fn xor(f: &mut ChipFactory) -> Composite {
         outputs!(out <- and;out))
 }
 
+pub fn xor_primitive(f: &mut ChipFactory) -> Primitive {
+    f.primitive("XOR",
+        hashmap!["a".into() => false, "b".into() => false],
+        hashmap!["out".into() => false],
+        Box::new(|i, o| {
+            o.insert("out".into(), i["a"] ^ i["b"]);
+        })
+    )
+}
+
 pub fn dmux(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
-    let not = gate!(g, not(f));
-    let and1 = gate!(g, and(f));
-    let and2 = gate!(g, and(f));
+    let not = gate!(g, not_primitive(f));
+    let and1 = gate!(g, and_primitive(f));
+    let and2 = gate!(g, and_primitive(f));
     wire!(g, not;out -> and1;b);
 
     f.composite("DMUX", g,
@@ -581,19 +611,30 @@ pub fn dmux(f: &mut ChipFactory) -> Composite {
 pub fn halfadder(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
-    let xor = gate!(g, xor(f));
-    let and = gate!(g, and(f));
+    let xor = gate!(g, xor_primitive(f));
+    let and = gate!(g, and_primitive(f));
 
     f.composite("HALFADDER", g,
         inputs!(a -> xor;a, b -> xor;b, a -> and;a, b -> and;b),
         outputs!(sum <- xor;out, carry <- and;out))
 }
 
+fn halfadder_primitive(f: &mut ChipFactory) -> Primitive {
+    f.primitive("HALFADDER",
+        hashmap!["a".into() => false, "b".into() => false],
+        hashmap!["sum".into() => false, "carry".into() => false],
+        Box::new(|i, o| {
+            o.insert("sum".into(), i["a"] ^ i["b"]);
+            o.insert("carry".into(), i["a"] && i["b"]);
+        })
+    )
+}
+
 pub fn fulladder(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
 
-    let half1 = gate!(g, halfadder(f));
-    let half2 = gate!(g, halfadder(f));
+    let half1 = gate!(g, halfadder_primitive(f));
+    let half2 = gate!(g, halfadder_primitive(f));
     let or = gate!(g, or(f));
 
     wire!(g, half1;carry -> or;a, half1;sum -> half2;a, half2;carry -> or;b);
@@ -749,24 +790,13 @@ mod tests {
         }
     }
 
-    fn not_ref(inputs: &Vec<bool>) -> Vec<bool> {
-        assert_eq!(inputs.len(), 1);
-        vec![!inputs[0]]
-    }
-
     #[test]
     fn run_not() {
         let mut f = ChipFactory::new();
         let mut c = not(&mut f);
         assert_eq!("NOT", c.name());
-        test_against_reference(&mut c, vec!["in"], vec!["out"], not_ref);
         let mut p = not_primitive(&mut f);
         test_against_primitive(&mut c, &mut p, vec!["in"], vec!["out"]);
-    }
-
-    fn or_ref(inputs: &Vec<bool>) -> Vec<bool> {
-        assert_eq!(inputs.len(), 2);
-        vec![inputs[0] || inputs[1]]
     }
 
     #[test]
@@ -774,12 +804,8 @@ mod tests {
         let mut f = ChipFactory::new();
         let mut c = or(&mut f);
         assert_eq!("OR", c.name());
-        test_against_reference(&mut c, vec!["a", "b"], vec!["out"], or_ref);
-    }
-
-    fn xor_ref(inputs: &Vec<bool>) -> Vec<bool> {
-        assert_eq!(inputs.len(), 2);
-        vec![(inputs[0] || inputs[1]) && !(inputs[0] && inputs[1])]
+        let mut p = or_primitive(&mut f);
+        test_against_primitive(&mut c, &mut p, vec!["a", "b"], vec!["out"]);
     }
 
     #[test]
@@ -787,7 +813,8 @@ mod tests {
         let mut f = ChipFactory::new();
         let mut c = xor(&mut f);
         assert_eq!("XOR", c.name());
-        test_against_reference(&mut c, vec!["a", "b"], vec!["out"], xor_ref);
+        let mut p = xor_primitive(&mut f);
+        test_against_primitive(&mut c, &mut p, vec!["a", "b"], vec!["out"]);
     }
 
     fn or8way_ref(inputs: &Vec<bool>) -> Vec<bool> {
@@ -806,17 +833,13 @@ mod tests {
             or8way_ref);
     }
 
-    fn and_ref(inputs: &Vec<bool>) -> Vec<bool> {
-        assert_eq!(inputs.len(), 2);
-        vec![inputs[0] && inputs[1]]
-    }
-
     #[test]
     fn run_and() {
         let mut f = ChipFactory::new();
         let mut c = and(&mut f);
         assert_eq!("AND", c.name());
-        test_against_reference(&mut c, vec!["a", "b"], vec!["out"], and_ref);
+        let mut p = and_primitive(&mut f);
+        test_against_primitive(&mut c, &mut p, vec!["a", "b"], vec!["out"]);
     }
 
     fn mux_ref(inputs: &Vec<bool>) -> Vec<bool> {
@@ -835,19 +858,13 @@ mod tests {
         test_against_reference(&mut c, vec!["sel", "a", "b"], vec!["out"], mux_ref);
     }
 
-    fn halfadder_ref(inputs: &Vec<bool>) -> Vec<bool> {
-        assert_eq!(inputs.len(), 2);
-        let sum = xor_ref(inputs)[0];
-        let carry = and_ref(inputs)[0];
-        vec![sum, carry]
-    }
-
     #[test]
     fn run_halfadder() {
         let mut f = ChipFactory::new();
         let mut c = halfadder(&mut f);
         assert_eq!("HALFADDER", c.name());
-        test_against_reference(&mut c, vec!["a", "b"], vec!["sum", "carry"], halfadder_ref);
+        let mut p = halfadder_primitive(&mut f);
+        test_against_primitive(&mut c, &mut p, vec!["a", "b"], vec!["sum", "carry"]);
     }
 
     fn fulladder_ref(inputs: &Vec<bool>) -> Vec<bool> {
