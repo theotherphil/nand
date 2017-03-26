@@ -120,13 +120,49 @@ pub trait Chip {
 /// Nand gates are always treated as primitive.
 /// We could use instances of Primitive to represent them, but
 /// that would make emulation even slower.
-pub struct Nand {
-    id: u32,
-    a: bool,
-    b: bool,
-    out: bool
+pub struct Nand { id: u32, a: bool, b: bool, out: bool }
+
+impl Nand {
+    pub fn new(id: u32) -> Nand { Nand { id: id, a: false, b: false, out: false } }
 }
 
+impl Chip for Nand {
+    fn id(&self) -> u32 { self.id }
+    fn name(&self) -> String { "NAND".into() }
+
+    fn run(&mut self) {
+        log_running(&self.name());
+        self.out = !(self.a && self.b);
+    }
+
+    fn set_input(&mut self, pin: &str, state: bool) {
+        log_input_set(&self.name(), pin, state);
+        match pin {
+            "a" => self.a = state,
+            "b" => self.b = state,
+            s => invalid_pin_write("nand", s, vec!["a", "b"])
+        };
+    }
+
+    fn read_output(&self, pin: &str) -> bool {
+        let out = match pin {
+            "out" => self.out,
+            s => invalid_pin_read("nand", s, vec!["out"])
+        };
+        log_output_read(&self.name(), pin, out);
+        out
+    }
+
+    fn input_pins(&self) -> Vec<String> {
+        vec!["a".into(), "b".into()]
+    }
+
+    fn output_pins(&self) -> Vec<String> {
+        vec!["out".into()]
+    }
+}
+
+/// Primitive gates provide a function to set outputs from inputs.
 pub struct Primitive {
     pub id: u32,
     pub name: String,
@@ -155,6 +191,76 @@ impl Chip for Primitive {
 
     fn read_output(&self, pin: &str) -> bool {
         *self.outputs.get(pin).unwrap()
+    }
+
+    fn input_pins(&self) -> Vec<String> {
+        self.inputs.keys().map(|x| x.clone()).collect()
+    }
+
+    fn output_pins(&self) -> Vec<String> {
+        self.outputs.keys().map(|x| x.clone()).collect()
+    }
+}
+
+/// Composite chips define a chip by wiring together other chips.
+pub struct Composite {
+    pub id: u32,
+    pub name: String,
+    pub graph: ChipGraph,
+    pub inputs: HashMapFnv<String, Vec<(NodeIndex, String)>>,
+    pub outputs: HashMapFnv<String, (NodeIndex, String)>,
+
+    sorted_nodes: Vec<NodeIndex>,
+}
+
+impl Chip for Composite {
+    fn id(&self) -> u32 {
+        self.id
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    // Assumes that inputs have already been set.
+    fn run(&mut self) {
+        log_running(&self.name());
+        for u in &self.sorted_nodes {
+            self.graph.node_weight_mut(*u).unwrap().run();
+
+            let mut neighbours = self.graph
+                .neighbors_directed(*u, Direction::Outgoing)
+                .detach();
+
+            while let Some((e, v)) = neighbours.next(&self.graph) {
+                let wire = self.graph.edge_weight(e).unwrap().clone();
+                let state = self.graph.node_weight(*u).unwrap().read_output(&wire.from_port);
+                self.graph.node_weight_mut(v).unwrap().set_input(&wire.to_port, state);
+            }
+        }
+    }
+
+    fn set_input(&mut self, pin: &str, state: bool) {
+        log_input_set(&self.name(), pin, state);
+        if !self.inputs.contains_key(&pin.to_string()) {
+            invalid_pin_write(&self.name, pin, self.inputs.keys().map(|a| &**a).collect::<Vec<_>>())
+        }
+        let node_pins = self.inputs.get(pin).unwrap();
+        for &(node, ref inner_pin) in node_pins.into_iter() {
+            let mut chip = self.graph.node_weight_mut(node).unwrap();
+            chip.set_input(&inner_pin, state);
+        }
+    }
+
+    fn read_output(&self, pin: &str) -> bool {
+        if !self.outputs.contains_key(&pin.to_string()) {
+            invalid_pin_read(&self.name, pin, self.outputs.keys().map(|a| &**a).collect::<Vec<_>>())
+        }
+        let &(node, ref inner_pin) = self.outputs.get(pin).unwrap();
+        let chip = self.graph.node_weight(node).unwrap();
+        let out = chip.read_output(&inner_pin);
+        log_output_read(&self.name(), pin, out);
+        out
     }
 
     fn input_pins(&self) -> Vec<String> {
@@ -227,17 +333,6 @@ impl ChipFactory {
     }
 }
 
-impl Nand {
-    pub fn new(id: u32) -> Nand {
-        Nand {
-            id: id,
-            a: false,
-            b: false,
-            out: false
-        }
-    }
-}
-
 /// The 'weight' of an edge connecting two pins.
 /// The edge connects two chips, and its 'weights' determine
 /// which ports on those chips are connected.
@@ -256,116 +351,6 @@ impl Wire {
     }
 }
 
-pub struct Composite {
-    pub id: u32,
-    pub name: String,
-    pub graph: ChipGraph,
-    pub inputs: HashMapFnv<String, Vec<(NodeIndex, String)>>,
-    pub outputs: HashMapFnv<String, (NodeIndex, String)>,
-
-    sorted_nodes: Vec<NodeIndex>,
-}
-
-impl Chip for Nand {
-    fn id(&self) -> u32 {
-        self.id
-    }
-
-    fn name(&self) -> String {
-        "NAND".into()
-    }
-
-    fn run(&mut self) {
-        log_running(&self.name());
-        self.out = !(self.a && self.b);
-    }
-
-    fn set_input(&mut self, pin: &str, state: bool) {
-        log_input_set(&self.name(), pin, state);
-        match pin {
-            "a" => self.a = state,
-            "b" => self.b = state,
-            s => invalid_pin_write("nand", s, vec!["a", "b"])
-        };
-    }
-
-    fn read_output(&self, pin: &str) -> bool {
-        let out = match pin {
-            "out" => self.out,
-            s => invalid_pin_read("nand", s, vec!["out"])
-        };
-        log_output_read(&self.name(), pin, out);
-        out
-    }
-
-    fn input_pins(&self) -> Vec<String> {
-        vec!["a".into(), "b".into()]
-    }
-
-    fn output_pins(&self) -> Vec<String> {
-        vec!["out".into()]
-    }
-}
-
-impl Chip for Composite {
-    fn id(&self) -> u32 {
-        self.id
-    }
-
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    // Assumes that inputs have already been set.
-    fn run(&mut self) {
-        log_running(&self.name());
-        for u in &self.sorted_nodes {
-            self.graph.node_weight_mut(*u).unwrap().run();
-
-            let mut neighbours = self.graph
-                .neighbors_directed(*u, Direction::Outgoing)
-                .detach();
-
-            while let Some((e, v)) = neighbours.next(&self.graph) {
-                let wire = self.graph.edge_weight(e).unwrap().clone();
-                let state = self.graph.node_weight(*u).unwrap().read_output(&wire.from_port);
-                self.graph.node_weight_mut(v).unwrap().set_input(&wire.to_port, state);
-            }
-        }
-    }
-
-    fn set_input(&mut self, pin: &str, state: bool) {
-        log_input_set(&self.name(), pin, state);
-        if !self.inputs.contains_key(&pin.to_string()) {
-            invalid_pin_write(&self.name, pin, self.inputs.keys().map(|a| &**a).collect::<Vec<_>>())
-        }
-        let node_pins = self.inputs.get(pin).unwrap();
-        for &(node, ref inner_pin) in node_pins.into_iter() {
-            let mut chip = self.graph.node_weight_mut(node).unwrap();
-            chip.set_input(&inner_pin, state);
-        }
-    }
-
-    fn read_output(&self, pin: &str) -> bool {
-        if !self.outputs.contains_key(&pin.to_string()) {
-            invalid_pin_read(&self.name, pin, self.outputs.keys().map(|a| &**a).collect::<Vec<_>>())
-        }
-        let &(node, ref inner_pin) = self.outputs.get(pin).unwrap();
-        let chip = self.graph.node_weight(node).unwrap();
-        let out = chip.read_output(&inner_pin);
-        log_output_read(&self.name(), pin, out);
-        out
-    }
-
-    fn input_pins(&self) -> Vec<String> {
-        self.inputs.keys().map(|x| x.clone()).collect()
-    }
-
-    fn output_pins(&self) -> Vec<String> {
-        self.outputs.keys().map(|x| x.clone()).collect()
-    }
-}
-
 fn invalid_pin_read(chip_name: &str, pin_name: &str, available: Vec<&str>) -> ! {
     panic!(format!(
         "Attempting to read invalid pin {} on chip {}. The available output pins are: {}",
@@ -381,27 +366,18 @@ fn invalid_pin_write(chip_name: &str, pin_name: &str, available: Vec<&str>) -> !
 const DEBUG_CHIPS: bool = false;
 
 fn log_running(name: &str) {
-    if DEBUG_CHIPS {
-        println!("Running {}", name);
-    }
+    if DEBUG_CHIPS { println!("Running {}", name); }
 }
 
 fn log_input_set(name: &str, pin: &str, state: bool) {
-    if DEBUG_CHIPS {
-        println!("Setting {}:{} to {}", name, pin, state);
-    }
+    if DEBUG_CHIPS { println!("Setting {}:{} to {}", name, pin, state); }
 }
 
 fn log_output_read(name: &str, pin: &str, state: bool) {
-    if DEBUG_CHIPS {
-        println!("Read {}:{} and got {}", name, pin, state);
-    }
+    if DEBUG_CHIPS { println!("Read {}:{} and got {}", name, pin, state); }
 }
 
-
-pub fn nand(f: &mut ChipFactory) -> Nand {
-    f.nand()
-}
+pub fn nand(f: &mut ChipFactory) -> Nand { f.nand() }
 
 pub fn not(f: &mut ChipFactory) -> Composite {
     let mut g = ChipGraph::new();
